@@ -34,6 +34,8 @@ type BPTree struct {
 	// to simplify iteration over the leaf nodes.
 	leftmost *node
 
+	rightmost *node
+
 	// The order or branching factor of a B+ tree measures the capacity of nodes
 	// for internal nodes in the tree.
 	order int
@@ -119,7 +121,8 @@ func (t *BPTree) initializeRoot(key, value []byte) {
 	keys := make([][]byte, t.order-1)
 	keys[0] = copyBytes(key)
 
-	pointers := make([]*pointer, t.order)
+	pointers := make([]*pointer, t.order+1)
+
 	pointers[0] = &pointer{value}
 
 	t.root = &node{
@@ -131,6 +134,7 @@ func (t *BPTree) initializeRoot(key, value []byte) {
 	}
 
 	t.leftmost = t.root
+	t.rightmost = t.root
 	t.size++
 }
 
@@ -238,7 +242,7 @@ func (t *BPTree) putIntoNewRoot(key []byte, l, r *node) {
 	newRoot := &node{
 		leaf:     false,
 		keys:     make([][]byte, t.order-1),
-		pointers: make([]*pointer, t.order),
+		pointers: make([]*pointer, t.order+1),
 		parent:   nil,
 		keyNum:   1, // we are going to put just one key
 	}
@@ -271,7 +275,7 @@ func (t *BPTree) putIntoParentAndSplit(parent *node, k []byte, l, r *node) ([]by
 		leaf:     false,
 		keys:     make([][]byte, t.order-1),
 		keyNum:   0,
-		pointers: make([]*pointer, t.order),
+		pointers: make([]*pointer, t.order+1),
 		parent:   nil,
 	}
 
@@ -354,7 +358,7 @@ func (t *BPTree) putIntoLeafAndSplit(n *node, insertPos int, k, v []byte) (*node
 		leaf:     true,
 		keys:     make([][]byte, t.order-1),
 		keyNum:   0,
-		pointers: make([]*pointer, t.order),
+		pointers: make([]*pointer, t.order+1),
 		parent:   nil,
 	}
 
@@ -366,11 +370,15 @@ func (t *BPTree) putIntoLeafAndSplit(n *node, insertPos int, k, v []byte) (*node
 	}
 
 	copy(right.keys, n.keys[copyFrom:])
-	copy(right.pointers, n.pointers[copyFrom:len(n.pointers)-1])
+	copy(right.pointers, n.pointers[copyFrom:len(n.pointers)-2])
 
 	// copy the pointer to the next node
-	right.setNext(n.next())
+	nextPointer := n.next(false)
+	right.setNext(nextPointer)
 	right.keyNum = len(right.keys) - copyFrom
+	if nextPointer == nil {
+		t.rightmost = right
+	}
 
 	// the given node becomes the left node
 	left := n
@@ -426,9 +434,9 @@ func (t *BPTree) deleteAtLeafAndRebalance(n *node, key []byte) ([]byte, bool) {
 	n.deleteAt(keyPos, keyPos)
 
 	if n.parent == nil {
-		// deletion from the root 				
+		// deletion from the root
 		if n.keyNum == 0 {
-			// remove the root 
+			// remove the root
 			t.root = nil
 		}
 
@@ -632,7 +640,9 @@ func (t *BPTree) rebalanceParentNode(n *node) {
 
 // ForEach traverses tree in ascending key order.
 func (t *BPTree) ForEach(action func(key []byte, value []byte)) {
-	for it := t.Iterator(); it.HasNext(); {
+	for it := t.Iterator(&IteratorOptions{
+		reverse: false,
+	}); it.HasNext(); {
 		key, value := it.Next()
 		action(key, value)
 	}
@@ -670,7 +680,7 @@ func (n *node) copyFromRight(from *node) {
 	}
 
 	if n.leaf {
-		n.setNext(from.next())
+		n.setNext(from.next(false))
 	} else {
 		n.pointers[n.keyNum] = from.pointers[from.keyNum]
 		n.pointers[n.keyNum].asNode().parent = n
@@ -770,13 +780,20 @@ func (n *node) insertAt(keyPosition int, key []byte, pointerPosition int, pointe
 // setNext sets the "next" pointer (the last pointer) to the next node. Only relevant
 // for the leaf nodes.
 func (n *node) setNext(p *pointer) {
-	n.pointers[len(n.pointers)-1] = p
+	n.pointers[len(n.pointers)-2] = p
+	if p != nil && n.keyNum > 0 {
+		p.asNode().pointers[len(p.asNode().pointers)-1] = &pointer{n}
+	}
 }
 
 // next returns the pointer to the next leaf node. Only relevant
 // for the leaf nodes.
-func (n *node) next() *pointer {
-	return n.pointers[len(n.pointers)-1]
+func (n *node) next(reverse bool) *pointer {
+	if reverse {
+		return n.pointers[len(n.pointers)-1]
+	}
+
+	return n.pointers[len(n.pointers)-2]
 }
 
 // pointer wraps the node or the value.
