@@ -781,7 +781,7 @@ func (n *node) insertAt(keyPosition int, key []byte, pointerPosition int, pointe
 // for the leaf nodes.
 func (n *node) setNext(p *pointer) {
 	n.pointers[len(n.pointers)-2] = p
-	if p != nil && n.keyNum > 0 {
+	if p != nil && n.keyNum >= 0 {
 		p.asNode().pointers[len(p.asNode().pointers)-1] = &pointer{n}
 	}
 }

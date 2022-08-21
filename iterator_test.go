@@ -184,7 +184,7 @@ func TestReverseIterator(t *testing.T) {
 
 	fmt.Println(expected)
 	fmt.Println(actual)
-	/*if !reflect.DeepEqual(expected, actual) {
+	if !reflect.DeepEqual(expected, actual) {
 		t.Fatalf("%s != %s", expected, actual)
-	}*/
+	}
 }
